@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import { API } from 'aws-amplify';
+import { API, Storage } from 'aws-amplify';
 import { withAuthenticator, AmplifySignOut } from '@aws-amplify/ui-react';
 import { listNotes } from './graphql/queries';
 import {
@@ -20,6 +20,16 @@ function App() {
 
   async function fetchNotes() {
     const apiData = await API.graphql({ query: listNotes });
+    const notesFromAPI = apiData.data.listNotes.items;
+    await Promise.all(
+      notesFromAPI.map(async (note) => {
+        if (note.image) {
+          const image = await Storage.get(note.image);
+          note.image = image;
+        }
+        return note;
+      })
+    );
     setNotes(apiData.data.listNotes.items);
   }
 
@@ -29,6 +39,10 @@ function App() {
       query: createNoteMutation,
       variables: { input: formData },
     });
+    if (formData.image) {
+      const image = await Storage.get(formData.image);
+      formData.image = image;
+    }
     setNotes([...notes, formData]);
     setFormData(initialFormState);
   }
@@ -42,9 +56,20 @@ function App() {
     });
   }
 
+  async function onChange(e) {
+    if (!e.target.files[0]) return;
+    const file = e.target.files[0];
+    setFormData({ ...formData, image: file.name });
+    await Storage.put(file.name, file);
+    fetchNotes();
+  }
+
   return (
     <div className="App">
       <h1>Mi aplicación de notas</h1>
+
+      <input type="file" onChange={onChange} />
+
       <input
         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
         placeholder="Nombre de nota"
@@ -64,6 +89,7 @@ function App() {
             <h2>{note.name}</h2>
             <p>{note.description}</p>
             <button onClick={() => deleteNote(note)}>Delete note</button>
+            {note.image && <img src={note.image} style={{ width: 400 }} />}
           </div>
         ))}
       </div>
